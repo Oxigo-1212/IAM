@@ -17,13 +17,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 import org.IAM.dto.AuthTokenResponse;
+import org.IAM.dto.ForgotPasswordRequest;
 import org.IAM.dto.LoginRequest;
 import org.IAM.dto.LogoutResponse;
+import org.IAM.dto.OperationResponse;
 import org.IAM.dto.RefreshRequest;
 import org.IAM.dto.RegisterRequest;
 import org.IAM.dto.RegisterResponse;
+import org.IAM.dto.ResetPasswordRequest;
 import org.IAM.exceptions.DuplicateEmailException;
 import org.IAM.exceptions.InvalidCredentialsException;
+import org.IAM.exceptions.InvalidResetCodeException;
 import org.IAM.repositories.user.User;
 import org.IAM.repositories.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +45,8 @@ class AuthServiceTest {
     private PasswordEncoder passwordEncoder;
     private JwtService jwtService;
     private TokenStoreService tokenStoreService;
+    private PasswordResetStoreService passwordResetStoreService;
+    private EmailService emailService;
     private AuthService authService;
 
     @BeforeEach
@@ -49,7 +55,16 @@ class AuthServiceTest {
         passwordEncoder = new DelegatingPasswordEncoder("bcrypt", Map.of("bcrypt", new BCryptPasswordEncoder()));
         jwtService = new JwtService(TEST_SECRET, 900);
         tokenStoreService = mock(TokenStoreService.class);
-        authService = new AuthService(userRepository, passwordEncoder, jwtService, tokenStoreService);
+        passwordResetStoreService = mock(PasswordResetStoreService.class);
+        emailService = mock(EmailService.class);
+        authService = new AuthService(
+            userRepository,
+            passwordEncoder,
+            jwtService,
+            tokenStoreService,
+            passwordResetStoreService,
+            emailService
+        );
     }
 
     @Test
@@ -184,5 +199,69 @@ class AuthServiceTest {
         assertTrue(response.success());
         verify(tokenStoreService).blocklistAccessToken(eq(aliceTokenId), any(Duration.class));
         verify(tokenStoreService, never()).deleteRefreshToken("bob-rt");
+    }
+
+    @Test
+    void requestPasswordResetSavesSixDigitCodeAndEmailsRegisteredUser() {
+        User user = new User();
+        user.setEmail("alice@gmail.com");
+        when(userRepository.findByEmail("alice@gmail.com")).thenReturn(Optional.of(user));
+
+        OperationResponse response = authService.requestPasswordReset(
+            new ForgotPasswordRequest("  Alice@Gmail.com ")
+        );
+
+        assertTrue(response.success());
+
+        ArgumentCaptor<String> codeCaptor = ArgumentCaptor.forClass(String.class);
+        verify(passwordResetStoreService).saveCode(eq("alice@gmail.com"), codeCaptor.capture());
+        String code = codeCaptor.getValue();
+        assertTrue(code.matches("^[0-9]{6}$"));
+        verify(emailService).sendPasswordResetCode("alice@gmail.com", code);
+    }
+
+    @Test
+    void requestPasswordResetReturnsSuccessWithoutEmailingUnknownAddress() {
+        when(userRepository.findByEmail("ghost@gmail.com")).thenReturn(Optional.empty());
+
+        OperationResponse response = authService.requestPasswordReset(
+            new ForgotPasswordRequest("ghost@gmail.com")
+        );
+
+        assertTrue(response.success());
+        verify(passwordResetStoreService, never()).saveCode(any(), any());
+        verify(emailService, never()).sendPasswordResetCode(any(), any());
+    }
+
+    @Test
+    void resetPasswordUpdatesBcryptHashWhenCodeIsValid() {
+        User user = new User();
+        user.setEmail("alice@gmail.com");
+        user.setPassword(passwordEncoder.encode("oldPassword123"));
+
+        when(passwordResetStoreService.verifyAndConsume("alice@gmail.com", "123456")).thenReturn(true);
+        when(userRepository.findByEmail("alice@gmail.com")).thenReturn(Optional.of(user));
+
+        OperationResponse response = authService.resetPassword(
+            new ResetPasswordRequest("alice@gmail.com", "123456", "brandNewPass123")
+        );
+
+        assertTrue(response.success());
+        assertTrue(passwordEncoder.matches("brandNewPass123", user.getPassword()));
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void resetPasswordRejectsInvalidOrExpiredCodeWithoutSaving() {
+        when(passwordResetStoreService.verifyAndConsume("alice@gmail.com", "000000")).thenReturn(false);
+
+        assertThrows(
+            InvalidResetCodeException.class,
+            () -> authService.resetPassword(
+                new ResetPasswordRequest("alice@gmail.com", "000000", "brandNewPass123")
+            )
+        );
+
+        verify(userRepository, never()).save(any());
     }
 }

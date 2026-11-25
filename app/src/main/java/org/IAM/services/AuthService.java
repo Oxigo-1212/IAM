@@ -1,18 +1,23 @@
 package org.IAM.services;
 
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Locale;
 import java.util.UUID;
 
 import org.IAM.dto.AuthTokenResponse;
+import org.IAM.dto.ForgotPasswordRequest;
 import org.IAM.dto.LoginRequest;
 import org.IAM.dto.LogoutResponse;
+import org.IAM.dto.OperationResponse;
 import org.IAM.dto.RefreshRequest;
 import org.IAM.dto.RegisterRequest;
 import org.IAM.dto.RegisterResponse;
+import org.IAM.dto.ResetPasswordRequest;
 import org.IAM.exceptions.DuplicateEmailException;
 import org.IAM.exceptions.InvalidCredentialsException;
+import org.IAM.exceptions.InvalidResetCodeException;
 import org.IAM.repositories.user.User;
 import org.IAM.repositories.user.UserRepository;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,23 +27,31 @@ import org.springframework.stereotype.Service;
 public class AuthService {
 
     private static final String INVALID_CREDENTIALS_MESSAGE = "Invalid email or password";
+    private static final String INVALID_RESET_CODE_MESSAGE = "Invalid or expired reset code";
     private static final String BEARER_TOKEN_TYPE = "Bearer";
 
+    private final SecureRandom secureRandom = new SecureRandom();
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final TokenStoreService tokenStoreService;
+    private final PasswordResetStoreService passwordResetStoreService;
+    private final EmailService emailService;
 
     public AuthService(
         UserRepository userRepository,
         PasswordEncoder passwordEncoder,
         JwtService jwtService,
-        TokenStoreService tokenStoreService
+        TokenStoreService tokenStoreService,
+        PasswordResetStoreService passwordResetStoreService,
+        EmailService emailService
     ) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.tokenStoreService = tokenStoreService;
+        this.passwordResetStoreService = passwordResetStoreService;
+        this.emailService = emailService;
     }
 
     public RegisterResponse register(RegisterRequest request) {
@@ -110,6 +123,39 @@ public class AuthService {
         }
 
         return new LogoutResponse(true);
+    }
+
+    public OperationResponse requestPasswordReset(ForgotPasswordRequest request) {
+        String normalizedEmail = normalizeEmail(request.email());
+
+        // Always return success: true even when the email is absent so attackers
+        // cannot probe which emails are registered.
+        userRepository.findByEmail(normalizedEmail).ifPresent(user -> {
+            String code = generateSixDigitCode();
+            passwordResetStoreService.saveCode(normalizedEmail, code);
+            emailService.sendPasswordResetCode(normalizedEmail, code);
+        });
+
+        return new OperationResponse(true);
+    }
+
+    public OperationResponse resetPassword(ResetPasswordRequest request) {
+        String normalizedEmail = normalizeEmail(request.email());
+
+        if (!passwordResetStoreService.verifyAndConsume(normalizedEmail, request.code())) {
+            throw new InvalidResetCodeException(INVALID_RESET_CODE_MESSAGE);
+        }
+
+        User user = userRepository.findByEmail(normalizedEmail)
+            .orElseThrow(() -> new InvalidResetCodeException(INVALID_RESET_CODE_MESSAGE));
+
+        user.setPassword(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+        return new OperationResponse(true);
+    }
+
+    private String generateSixDigitCode() {
+        return String.format("%06d", secureRandom.nextInt(1_000_000));
     }
 
     private String normalizeEmail(String email) {

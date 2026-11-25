@@ -11,15 +11,19 @@ import java.util.UUID;
 
 import org.IAM.config.SecurityConfig;
 import org.IAM.dto.AuthTokenResponse;
+import org.IAM.dto.ForgotPasswordRequest;
 import org.IAM.dto.LoginRequest;
 import org.IAM.dto.LogoutResponse;
+import org.IAM.dto.OperationResponse;
 import org.IAM.dto.ProfileResponse;
 import org.IAM.dto.RefreshRequest;
 import org.IAM.dto.RegisterRequest;
 import org.IAM.dto.RegisterResponse;
+import org.IAM.dto.ResetPasswordRequest;
 import org.IAM.exceptions.DuplicateEmailException;
 import org.IAM.exceptions.GlobalExceptionHandler;
 import org.IAM.exceptions.InvalidCredentialsException;
+import org.IAM.exceptions.InvalidResetCodeException;
 import org.IAM.services.AuthService;
 import org.IAM.services.JwtService;
 import org.IAM.services.TokenStoreService;
@@ -216,5 +220,47 @@ class AuthControllerTest {
                     {"refreshToken":"rt-123"}
                     """))
             .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void forgotPasswordReturns200WithoutAuth() throws Exception {
+        when(authService.requestPasswordReset(any(ForgotPasswordRequest.class)))
+            .thenReturn(new OperationResponse(true));
+
+        mockMvc.perform(post("/api/v1/auth/forgot-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"email":"alice@gmail.com"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void resetPasswordReturns200OnValidCode() throws Exception {
+        when(authService.resetPassword(any(ResetPasswordRequest.class)))
+            .thenReturn(new OperationResponse(true));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"email":"alice@gmail.com","code":"123456","newPassword":"brandNewPass123"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
+    void resetPasswordReturns400OnInvalidCode() throws Exception {
+        when(authService.resetPassword(any(ResetPasswordRequest.class)))
+            .thenThrow(new InvalidResetCodeException("Invalid or expired reset code"));
+
+        mockMvc.perform(post("/api/v1/auth/reset-password")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"email":"alice@gmail.com","code":"000000","newPassword":"brandNewPass123"}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("Invalid or expired reset code"));
     }
 }

@@ -12,6 +12,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(InvalidResetCodeException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidResetCode(InvalidResetCodeException ex) {
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(Map.of("error", ex.getMessage()));
+    }
+
     @ExceptionHandler(InvalidPasswordChangeException.class)
     public ResponseEntity<Map<String, String>> handleInvalidPasswordChange(InvalidPasswordChangeException ex) {
         return ResponseEntity

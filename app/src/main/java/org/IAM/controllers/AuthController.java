@@ -1,12 +1,15 @@
 package org.IAM.controllers;
 
 import org.IAM.dto.AuthTokenResponse;
+import org.IAM.dto.ForgotPasswordRequest;
 import org.IAM.dto.LoginRequest;
 import org.IAM.dto.LogoutRequest;
 import org.IAM.dto.LogoutResponse;
+import org.IAM.dto.OperationResponse;
 import org.IAM.dto.RefreshRequest;
 import org.IAM.dto.RegisterRequest;
 import org.IAM.dto.RegisterResponse;
+import org.IAM.dto.ResetPasswordRequest;
 import org.IAM.services.AuthService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -55,5 +58,15 @@ public class AuthController {
         String accessToken = authHeader.substring(BEARER_PREFIX.length()).trim();
         String refreshToken = request != null ? request.refreshToken() : null;
         return ResponseEntity.ok(authService.logout(accessToken, refreshToken));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<OperationResponse> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        return ResponseEntity.ok(authService.requestPasswordReset(request));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<OperationResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        return ResponseEntity.ok(authService.resetPassword(request));
     }
 }
