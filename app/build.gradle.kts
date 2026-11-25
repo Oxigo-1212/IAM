@@ -38,6 +38,23 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+    val envFile = rootProject.file(".env")
+    if (envFile.exists()) {
+        envFile.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .forEach { line ->
+                val idx = line.indexOf("=")
+                val key = line.substring(0, idx).trim()
+                val value = line.substring(idx + 1).trim().removeSurrounding("\"").removeSurrounding("'")
+                if (key.isNotEmpty() && System.getenv(key) == null) {
+                    environment(key, value)
+                }
+            }
+    }
+}
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(21)
