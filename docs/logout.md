@@ -29,7 +29,7 @@ flowchart LR
     Service -->|parse userId, jti, exp| Jwt["JwtService"]
     Service -->|verify ownerUserId == callerUserId & DEL refresh:tokenId| Redis["Redis"]
     Service -->|SET blacklist:access:jti TTL exp-now| Redis
-    Controller -->|200 OK {"success": true}| Client
+    Controller -->|200 OK success: true| Client
 ```
 
 ## API Design

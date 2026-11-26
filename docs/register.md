@@ -35,7 +35,7 @@ flowchart LR
     Encoder -->|hashedPassword| Repo["UserRepository (JPA)"]
     UUID["UUID Generator"] -->|userID| Repo
     Repo -->|INSERT (UNIQUE email)| DB
-    Controller -->|201 Created {"success": true}| Client
+    Controller -->|201 Created success: true| Client
 ```
 
 ## Data Model

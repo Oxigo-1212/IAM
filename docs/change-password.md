@@ -30,7 +30,7 @@ flowchart LR
     Service -->|matches currentPassword| Encoder["DelegatingPasswordEncoder (BCrypt)"]
     Service -->|encode newPassword & UPDATE| DB
     Service -->|SET blacklist:access:jti TTL exp-now| Redis["Redis"]
-    Controller -->|200 OK {"success": true}| Client
+    Controller -->|200 OK success: true| Client
 ```
 
 ## API Design
