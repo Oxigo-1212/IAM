@@ -2,6 +2,8 @@ package org.IAM.exceptions;
 
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(InvalidResetCodeException.class)
     public ResponseEntity<Map<String, String>> handleInvalidResetCode(InvalidResetCodeException ex) {
@@ -49,6 +53,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        log.warn("Database unique constraint violation during request");
         return ResponseEntity
             .status(HttpStatus.CONFLICT)
             .body(Map.of("error", "Email is already registered"));
@@ -60,8 +65,17 @@ public class GlobalExceptionHandler {
             .findFirst()
             .map(fieldError -> fieldError.getDefaultMessage())
             .orElse("Invalid request payload");
+        log.debug("Request validation failed: {}", message);
         return ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
             .body(Map.of("error", message));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, String>> handleUnexpected(Exception ex) {
+        log.error("Unhandled exception during request", ex);
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(Map.of("error", "Internal server error"));
     }
 }

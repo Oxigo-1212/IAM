@@ -17,11 +17,14 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // Instantiated inside SecurityConfig rather than as a Spring @Component so Spring Boot
 // does not auto-register it as a standalone servlet filter outside SecurityFilterChain.
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtService jwtService;
@@ -48,6 +51,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             JwtService.JwtPayload payload = jwtService.parseAndValidate(token);
             if (tokenStoreService.isAccessTokenBlocklisted(payload.tokenId())) {
+                log.warn("Rejected blocklisted access token for userId={} path={}", payload.userId(), request.getRequestURI());
                 writeUnauthorized(response);
                 return;
             }
@@ -57,6 +61,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
         } catch (JwtException | IllegalArgumentException ex) {
+            log.warn("Rejected invalid or expired JWT on path={} reason={}", request.getRequestURI(), ex.getClass().getSimpleName());
             SecurityContextHolder.clearContext();
             writeUnauthorized(response);
         }

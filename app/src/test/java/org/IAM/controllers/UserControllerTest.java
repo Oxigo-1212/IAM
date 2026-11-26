@@ -147,4 +147,54 @@ class UserControllerTest {
             .andExpect(status().isUnauthorized())
             .andExpect(jsonPath("$.error").value("Current password is incorrect"));
     }
+
+    @Test
+    void updateProfileReturns400OnUnsafeOrBlankAvatarUrl() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String token = jwtService.generateAccessToken(userId);
+        String tokenId = jwtService.parseAndValidate(token).tokenId();
+
+        when(tokenStoreService.isAccessTokenBlocklisted(tokenId)).thenReturn(false);
+
+        mockMvc.perform(put("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"avatarUrl":"javascript:alert(1)"}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("Avatar URL must be a valid http or https URL"));
+
+        mockMvc.perform(put("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"avatarUrl":"   "}
+                    """))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error").value("Avatar URL must be a valid http or https URL"));
+    }
+
+    @Test
+    void updateProfileReturns200OnValidHttpsAvatarUrl() throws Exception {
+        UUID userId = UUID.randomUUID();
+        String token = jwtService.generateAccessToken(userId);
+        String tokenId = jwtService.parseAndValidate(token).tokenId();
+
+        when(tokenStoreService.isAccessTokenBlocklisted(tokenId)).thenReturn(false);
+        when(userService.updateProfile(eq(userId), any(UpdateProfileRequest.class)))
+            .thenReturn(new ProfileResponse(
+                userId, "alice", "alice@example.com", null, null,
+                null, null, "https://cdn.example.com/avatar.png", null
+            ));
+
+        mockMvc.perform(put("/api/v1/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"avatarUrl":"https://cdn.example.com/avatar.png"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.avatarUrl").value("https://cdn.example.com/avatar.png"));
+    }
 }

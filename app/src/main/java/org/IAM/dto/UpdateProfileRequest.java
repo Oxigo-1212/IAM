@@ -2,6 +2,8 @@ package org.IAM.dto;
 
 import java.time.LocalDate;
 
+import org.IAM.validation.SafeWebUrl;
+
 import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -16,5 +18,6 @@ public record UpdateProfileRequest(
     @Past(message = "Date of birth must be in the past")
     LocalDate dateOfBirth,
     @Size(max = 500, message = "Avatar URL must be at most 500 characters")
+    @SafeWebUrl
     String avatarUrl
 ) {}

@@ -13,12 +13,15 @@ import org.IAM.exceptions.InvalidPasswordChangeException;
 import org.IAM.exceptions.UserNotFoundException;
 import org.IAM.repositories.user.User;
 import org.IAM.repositories.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
 public class UserService {
 
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
     private final UserRepository userRepository;
     private final ProfileCacheService profileCacheService;
     private final PasswordEncoder passwordEncoder;
@@ -41,6 +44,10 @@ public class UserService {
 
     public ProfileResponse getProfile(UUID userId) {
         return profileCacheService.get(userId)
+            .map(profile -> {
+                log.debug("Profile cache hit userId={}", userId);
+                return profile;
+            })
             .orElseGet(() -> loadAndCacheProfile(userId));
     }
 
@@ -56,6 +63,7 @@ public class UserService {
 
         User saved = userRepository.save(user);
         profileCacheService.evict(userId);
+        log.info("Profile updated and cache evicted userId={}", userId);
         return ProfileResponse.from(saved);
     }
 
@@ -68,11 +76,13 @@ public class UserService {
             .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            log.warn("Password change rejected: incorrect current password userId={}", userId);
             throw new InvalidCredentialsException("Current password is incorrect");
         }
 
         if (request.newPassword().equals(request.currentPassword())
             || passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            log.debug("Password change rejected: new password matches current userId={}", userId);
             throw new InvalidPasswordChangeException("New password must differ from current password");
         }
 
@@ -83,10 +93,12 @@ public class UserService {
         Duration remainingTtl = Duration.between(Instant.now(), payload.expiresAt());
         tokenStoreService.blocklistAccessToken(payload.tokenId(), remainingTtl);
 
+        log.info("Password changed and access token blocklisted userId={}", userId);
         return new ChangePasswordResponse(true);
     }
 
     private ProfileResponse loadAndCacheProfile(UUID userId) {
+        log.debug("Profile cache miss; loading from database userId={}", userId);
         User user = userRepository.findById(userId)
             .orElseThrow(() -> new UserNotFoundException("User not found"));
         ProfileResponse profile = ProfileResponse.from(user);
